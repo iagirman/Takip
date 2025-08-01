@@ -239,6 +239,28 @@ def send_motivation(chat_id):
     bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
 
 # KOMUTLAR
+
+# MOTİVASYONLU HATIRLATMA
+def send_motivation(chat_id):
+    msg = random.choice(MOTIVATION)
+    unread = get_unread_mentions()
+    if unread:
+        msg += f"\n\nHenüz okumayanlar: {unread}"
+    bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
+
+# KOMUTLAR
+@bot.message_handler(commands=['saat'])
+def saat_kontrol(message):
+    tz_tr = timezone(timedelta(hours=3))
+    now = datetime.now(tz_tr)
+    bot.send_message(chat_id=message.chat.id, text=f"Türkiye saatiyle şu an: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+
+@bot.message_handler(commands=['gonder'])
+def manual_send(message):
+    current_page = load_current_page()
+    send_page(current_page, message.chat.id, pin_message=True)
+    send_page(current_page + 1, message.chat.id)
+    bot.send_message(chat_id=message.chat.id, text="✅ Bugünkü 2 sayfa gönderildi!")
 @bot.message_handler(commands=['saat'])
 def saat_kontrol(message):
     tz_tr = timezone(timedelta(hours=3))
