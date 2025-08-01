@@ -1,7 +1,7 @@
 import telebot
 import os
 import random
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 import time as systime
 import threading
 import json
@@ -25,6 +25,10 @@ MOTIVATION = [
     "Kur’an’dan gıdanı ihmal etme!"
 ]
 
+# ========== ZAMAN FONKSİYONU (Türkiye Saati) ==========
+def now_tr():
+    return datetime.now(timezone.utc) + timedelta(hours=3)
+
 # ========== ORTAM DEĞİŞKENLERİ ==========
 TOKEN = os.environ['TOKEN']
 CHAT_ID = os.environ['CHAT_ID']  # Grup için
@@ -44,7 +48,7 @@ sheet_ceza = gsheet.open_by_key(SHEET_ID).worksheet("Cezalar")
 
 # ========== KURAN GÜNÜ HESABI (11:30) ==========
 def get_kuran_gunu(now=None):
-    now = now or datetime.now()
+    now = now or now_tr()
     if now.time() < time(11, 30):
         return (now - timedelta(days=1)).strftime("%Y-%m-%d")
     else:
@@ -183,7 +187,7 @@ def mark_read(first_name, user_id, username, date=None):
 
 # ========== CEZA SİSTEMİ ==========
 def add_penalty(user, amount):
-    sheet_ceza.append_row([user, amount, datetime.now().strftime("%Y-%m-%d")])
+    sheet_ceza.append_row([user, amount, now_tr().strftime("%Y-%m-%d")])
 
 def get_penalties():
     all_rows = sheet_ceza.get_all_records()
@@ -322,14 +326,15 @@ def welcome_new_member(message):
 # ========== ZAMANLAYICI SCHEDULER ==========
 def scheduler():
     while True:
-        print("Şu anki sunucu saati:", datetime.now())   # ←  BUNU EKLE!
-        now = datetime.now()
+        now = now_tr()
         hhmm = now.strftime("%H:%M")
         if hhmm == "11:30":
+            print(f"[{now}] --> Gün BAŞLANGICI (ceza ve sayfa gönderimi)")
             daily_check_and_penalty()
             send_daily_pages(advance_page=True)
             systime.sleep(90)
         elif now.hour >= 6 and now.hour < 24 and now.minute == 0 and now.hour % 2 == 0:
+            print(f"[{now}] --> 2 saatte bir hatırlatma")
             send_motivation(CHAT_ID)
             systime.sleep(60)
         systime.sleep(20)
@@ -339,7 +344,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    print("Bot çalışıyor - keep alive ping alındı!")
+    print("Bot çalışıyor - keep alive ping alındı! --", now_tr())
     return "Bot çalışıyor."
 
 def run():
@@ -348,5 +353,5 @@ def run():
 Thread(target=scheduler, daemon=True).start()
 Thread(target=run).start()
 
-print("🤖 Bot aktif...")
+print("🤖 Bot aktif...", now_tr())
 bot.polling()
