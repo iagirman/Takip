@@ -322,6 +322,7 @@ def welcome_new_member(message):
 # ========== ZAMANLAYICI SCHEDULER ==========
 def scheduler():
     while True:
+        print("Şu anki sunucu saati:", datetime.now())   # ←  BUNU EKLE!
         now = datetime.now()
         hhmm = now.strftime("%H:%M")
         if hhmm == "11:30":
