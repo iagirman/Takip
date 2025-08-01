@@ -1,7 +1,7 @@
 import telebot
 import os
 import random
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 import time as systime
 import threading
 import json
@@ -13,7 +13,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # MOTİVASYON SÖZLERİ
 MOTIVATION = [
-    "Sıcak hava seni Kur’an okumaktan tembelleştirmesin, Kur’an okumamanın zararını başka bir şeyle kapatamazsın!",
+    "Sıcak hava seni Kur’an okumaktan tembelleştirmesin", 
+    "Kur’an okumamanın zararını başka bir şeyle kapatamazsın!",
     "Bu kadar dinlenmek yeter! Hadi Kur’an dersini oku!",
     "Bari sen Kur’an okumayı terkedenlerden olma!",
     "Seni boş gündemlerine çekmeye çalışanları sen Kur’an okumaya davet et!",
@@ -23,6 +24,7 @@ MOTIVATION = [
     "Hayat kitabına bakmayı unutma!",
     "Tembellik etme, Kur’an dersine çalış!",
     "Kur’an’dan gıdanı ihmal etme!"
+    "Haydi Ey Mücahidim"
 ]
 
 # ORTAM DEĞİŞKENLERİ
@@ -42,9 +44,10 @@ sheet_okuma = gsheet.open_by_key(SHEET_ID).worksheet("Okuma Takip")
 sheet_ceza = gsheet.open_by_key(SHEET_ID).worksheet("Cezalar")
 sheet_ayar = gsheet.open_by_key(SHEET_ID).worksheet("BotAyar")  # current_page burada tutulacak
 
-# KURAN GÜNÜ HESABI (11:30)
+# TÜRKİYE SAATİYLE GÜN HESABI (11:30)
 def get_kuran_gunu(now=None):
-    now = now or datetime.now()
+    tz_tr = timezone(timedelta(hours=3))
+    now = now or datetime.now(tz_tr)
     if now.time() < time(11, 30):
         return (now - timedelta(days=1)).strftime("%Y-%m-%d")
     else:
@@ -184,7 +187,7 @@ def mark_read(first_name, user_id, username, date=None):
 
 # CEZA SİSTEMİ
 def add_penalty(user, amount):
-    sheet_ceza.append_row([user, amount, datetime.now().strftime("%Y-%m-%d")])
+    sheet_ceza.append_row([user, amount, datetime.now(timezone(timedelta(hours=3))).strftime("%Y-%m-%d")])
 
 def get_penalties():
     all_rows = sheet_ceza.get_all_records()
@@ -206,7 +209,6 @@ def daily_check_and_penalty():
     except ValueError:
         return
     penalties = []
-    ceza_sert = []
     for i, (name, uid) in enumerate(zip(names, user_ids)):
         cell = sheet_okuma.cell(i + 2, col_num).value
         if cell != "✅":
@@ -235,45 +237,6 @@ def send_motivation(chat_id):
     if unread:
         msg += f"\n\nHenüz okumayanlar: {unread}"
     bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
-
-# EKSİK GÜNLERİ SADECE İLK OKUDUĞU GÜNDEN İTİBAREN BUL
-def eksik_sayfalar(username_or_userid, private=False):
-    names = sheet_okuma.col_values(1)[1:]
-    user_ids = sheet_okuma.col_values(2)[1:]
-    usernames = sheet_okuma.col_values(3)[1:]
-    date_cols = sheet_okuma.row_values(1)[3:]  # İlk 3 sütun meta
-    # Kişiyi bul
-    idx = None
-    for i, (name, uid, uname) in enumerate(zip(names, user_ids, usernames)):
-        if (
-            str(username_or_userid).lower() in (str(uid).lower(), str(uname).lower(), str(name).lower())
-            or (username_or_userid.startswith('@') and username_or_userid.lower() == str(uname).lower())
-        ):
-            idx = i
-            break
-    if idx is None:
-        return "Kullanıcı bulunamadı."
-    okuma_row = sheet_okuma.row_values(idx + 2)[3:]  # 2 = başlık satırı + 1
-    # İlk '✅' bulunduğu indexten sonrasına bak
-    try:
-        first_read_idx = okuma_row.index("✅")
-    except ValueError:
-        first_read_idx = len(okuma_row)
-    eksikler = []
-    for col_idx, cell in enumerate(okuma_row[first_read_idx:], start=first_read_idx):
-        if cell != "✅":
-            sayfa1 = load_current_page() - len(date_cols) + col_idx
-            sayfa2 = sayfa1 + 1
-            # mention veya username
-            mention = (
-                f'<a href="tg://user?id={user_ids[idx]}">{names[idx]}</a>'
-                if not private and user_ids[idx] else (usernames[idx] or names[idx])
-            )
-            eksikler.append(f"{mention} ({sayfa1+1}-{sayfa2})")
-    if eksikler:
-        return f"{names[idx]} eksik günler ve sayfa aralıkları:\n" + "\n".join(eksikler)
-    else:
-        return f"{names[idx]} için eksik gün yok."
 
 # KOMUTLAR
 @bot.message_handler(commands=['gonder'])
@@ -314,37 +277,6 @@ def handle_okudum(message):
         show_who_read(message.chat.id)
     else:
         bot.send_message(chat_id=message.chat.id, text=f"Hata: {msg}")
-
-@bot.message_handler(commands=['cezalar'])
-def ceza_rapor(message):
-    penalties = get_penalties()
-    if not penalties:
-        bot.send_message(chat_id=message.chat.id, text="📊 Hiç ceza yok.")
-    else:
-        report = "📊 Ceza Raporu:\n"
-        for user, amount in penalties.items():
-            report += f"• {user}: {amount} TL\n"
-        bot.send_message(chat_id=message.chat.id, text=report)
-
-@bot.message_handler(commands=['kimlerokudu', 'kimokudu'])
-def kimler_okudu(message):
-    show_who_read(message.chat.id)
-
-@bot.message_handler(commands=['yardim', 'komutlar', 'help'])
-def komutlar_listesi(message):
-    help_text = (
-        "📋 <b>Kullanılabilir Komutlar:</b>\n\n"
-        "<b>/gonder</b> — Bugünkü 2 Kur’an sayfasını tekrar gönderir (grup/özel).\n"
-        "<b>/sayfa [n]</b> — Belirli bir Kur’an sayfasını gönderir (grup/özel).\n"
-        "<b>/okudum</b> — (Grup) O gün okuduğunuzu işaretler, ardından okuyanlar tablosu gelir.\n"
-        "<b>/kimlerokudu</b> — (Grup) Bugün okuyan/okumayan raporu.\n"
-        "<b>/rapor</b> — (Grup) Ceza raporunu gönderir.\n"
-        "<b>/hatirlat</b> — (Grup) Motive sözlerle hatırlatma.\n"
-        "<b>/eksik</b> — Okumadığınız günlerin sayfa aralıklarını gösterir.\n"
-        "<b>/yardim</b> veya <b>/komutlar</b> — Bu rehberi gösterir."
-    )
-    bot.send_message(chat_id=message.chat.id, text=help_text, parse_mode="HTML")
-    
 @bot.message_handler(commands=['rapor'])
 def rapor_komutu(message):
     user = message.from_user
@@ -412,28 +344,34 @@ def rapor_komutu(message):
     )
     bot.send_message(message.chat.id, rapor, parse_mode="HTML")
 
-@bot.message_handler(commands=['hatirlat'])
-def manuel_hatirlat(message):
-    send_motivation(message.chat.id)
-
-@bot.message_handler(commands=['eksik'])
-def eksik_komutu(message):
-    # Gruba veya özelden yazılırsa
-    user = message.from_user
-    arg = None
-    try:
-        arg = message.text.split()[1]
-    except IndexError:
-        pass
-    if arg:
-        # /eksik username veya user_id ile başkası sorgulanabilir (admin)
-        resp = eksik_sayfalar(arg)
+@bot.message_handler(commands=['cezalar'])
+def ceza_rapor(message):
+    penalties = get_penalties()
+    if not penalties:
+        bot.send_message(chat_id=message.chat.id, text="📊 Hiç ceza yok.")
     else:
-        # kendi eksikleri
-        username = f"@{user.username}" if user.username else str(user.id)
-        private = (message.chat.type == "private")
-        resp = eksik_sayfalar(username, private=private)
-    bot.send_message(chat_id=message.chat.id, text=resp, parse_mode="HTML")
+        report = "📊 Ceza Raporu:\n"
+        for user, amount in penalties.items():
+            report += f"• {user}: {amount} TL\n"
+        bot.send_message(chat_id=message.chat.id, text=report)
+
+@bot.message_handler(commands=['kimlerokudu', 'kimokudu'])
+def kimler_okudu(message):
+    show_who_read(message.chat.id)
+
+@bot.message_handler(commands=['yardim', 'komutlar', 'help'])
+def komutlar_listesi(message):
+    help_text = (
+        "📋 <b>Kullanılabilir Komutlar:</b>\n\n"
+        "<b>/gonder</b> — Bugünkü 2 Kur’an sayfasını tekrar gönderir (grup/özel).\n"
+        "<b>/sayfa [n]</b> — Belirli bir Kur’an sayfasını gönderir (grup/özel).\n"
+        "<b>/okudum</b> — (Grup) O gün okuduğunuzu işaretler, ardından okuyanlar tablosu gelir.\n"
+        "<b>/kimlerokudu</b> — (Grup) Bugün okuyan/okumayan raporu.\n"
+        "<b>/cezalar</b> — (Grup) Ceza raporunu gönderir.\n"
+        "<b>/hatirlat</b> — (Grup) Motive sözlerle hatırlatma.\n"
+        "<b>/yardim</b> veya <b>/komutlar</b> — Bu rehberi gösterir."
+    )
+    bot.send_message(chat_id=message.chat.id, text=help_text, parse_mode="HTML")
 
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome_new_member(message):
@@ -450,7 +388,9 @@ def welcome_new_member(message):
 # SCHEDULER (Her gün 11:30'da yeni sayfa ve ceza, 2 saatte bir hatırlatma)
 def scheduler():
     while True:
-        now = datetime.now()
+        tz_tr = timezone(timedelta(hours=3))
+        now = datetime.now(tz_tr)
+        print(f"[Scheduler] Şu an TR saatiyle: {now.strftime('%Y-%m-%d %H:%M:%S')}")
         hhmm = now.strftime("%H:%M")
         if hhmm == "11:30":
             daily_check_and_penalty()
@@ -458,6 +398,7 @@ def scheduler():
             systime.sleep(90)
         elif now.hour >= 6 and now.hour < 24 and now.minute == 0 and now.hour % 2 == 0:
             send_motivation(CHAT_ID)
+            print("Hatırlatma gönderildi!")
             systime.sleep(60)
         systime.sleep(20)
 
