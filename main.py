@@ -11,9 +11,9 @@ from threading import Thread
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# MOTİVASYON SÖZLERİ
 MOTIVATION = [
-    "Sıcak hava seni Kur’an okumaktan tembelleştirmesin", 
-    "Kur’an okumamanın zararını başka bir şeyle kapatamazsın!",
+    "Sıcak hava seni Kur’an okumaktan tembelleştirmesin, Kur’an okumamanın zararını başka bir şeyle kapatamazsın!",
     "Bu kadar dinlenmek yeter! Hadi Kur’an dersini oku!",
     "Bari sen Kur’an okumayı terkedenlerden olma!",
     "Seni boş gündemlerine çekmeye çalışanları sen Kur’an okumaya davet et!",
@@ -23,15 +23,15 @@ MOTIVATION = [
     "Hayat kitabına bakmayı unutma!",
     "Tembellik etme, Kur’an dersine çalış!",
     "Kur’an’dan gıdanı ihmal etme!"
-    "Haydi Ey Mücahidim"
 ]
 
+# ORTAM DEĞİŞKENLERİ
 TOKEN = os.environ['TOKEN']
 CHAT_ID = os.environ['CHAT_ID']  # Grup için
 SHEET_ID = os.environ['SHEET_ID']
 bot = telebot.TeleBot(TOKEN)
-PAGES_FILE = "pages.json"
 
+# GOOGLE SHEETS BAĞLANTISI
 scope = [
     'https://spreadsheets.google.com/feeds',
     'https://www.googleapis.com/auth/drive'
@@ -40,33 +40,30 @@ creds = ServiceAccountCredentials.from_json_keyfile_name('service_account.json',
 gsheet = gspread.authorize(creds)
 sheet_okuma = gsheet.open_by_key(SHEET_ID).worksheet("Okuma Takip")
 sheet_ceza = gsheet.open_by_key(SHEET_ID).worksheet("Cezalar")
-sheet_ayar = gsheet.open_by_key(SHEET_ID).worksheet("BotAyar")
+sheet_ayar = gsheet.open_by_key(SHEET_ID).worksheet("BotAyar")  # current_page burada tutulacak
 
-with open(PAGES_FILE) as f:
-    pages = json.load(f)
-
+# KURAN GÜNÜ HESABI (11:30)
 def get_kuran_gunu(now=None):
-    now = now or datetime.utcnow() + timedelta(hours=3)  # Türkiye saati!
+    now = now or datetime.now()
     if now.time() < time(11, 30):
         return (now - timedelta(days=1)).strftime("%Y-%m-%d")
     else:
         return now.strftime("%Y-%m-%d")
 
-def get_current_page():
-    try:
-        val = sheet_ayar.acell('A2').value
-        return int(val) if val else 0
-    except Exception:
-        return 0
+# SAYFA TAKİBİ - current_page artık Sheets'te tutuluyor
+def load_current_page():
+    val = sheet_ayar.acell('A2').value
+    return int(val) if val and val.isdigit() else 0
 
-def set_current_page(val):
-    sheet_ayar.update_acell('A2', str(val))
+def save_current_page(page_num):
+    sheet_ayar.update_acell('A2', str(page_num))
 
+# KULLANICI KAYDI VE GÜNCELLEME
 def add_or_update_user(first_name, user_id, username):
     names = sheet_okuma.col_values(1)
     user_ids = sheet_okuma.col_values(2)
     found = False
-    for idx, uid in enumerate(user_ids[1:], start=2):
+    for idx, uid in enumerate(user_ids[1:], start=2):  # başlık var
         if str(uid) == str(user_id):
             sheet_okuma.update_cell(idx, 1, first_name)
             sheet_okuma.update_cell(idx, 3, username if username else "")
@@ -76,16 +73,35 @@ def add_or_update_user(first_name, user_id, username):
         sheet_okuma.append_row([first_name, user_id, username if username else ""])
         print(f"Kullanıcı eklendi: {first_name} (id:{user_id})")
 
-def get_user_row(username_or_id):
-    # id ya da @kullaniciadi ile satır bulucu
-    user_ids = sheet_okuma.col_values(2)
-    usernames = sheet_okuma.col_values(3)
-    username_or_id = str(username_or_id).lower().replace("@", "")
-    for idx in range(1, len(user_ids)):
-        if user_ids[idx] == username_or_id or usernames[idx].lower().replace("@", "") == username_or_id:
-            return idx+1
-    return None
+# KURAN SAYFALARI (pages.json)
+with open("pages.json") as f:
+    pages = json.load(f)
 
+def send_page(page_num, chat_id, pin_message=False):
+    try:
+        image_id = pages[page_num]
+        image_url = f"https://drive.google.com/uc?export=view&id={image_id}"
+        msg = bot.send_photo(chat_id=chat_id, photo=image_url, caption=f"📖 Kur’an Sayfa {page_num + 1}")
+        print(f"Sayfa {page_num + 1} gönderildi ({chat_id})")
+        if pin_message:
+            try:
+                bot.pin_chat_message(chat_id=chat_id, message_id=msg.message_id, disable_notification=True)
+            except Exception as e:
+                print("Pin hatası:", e)
+        return True
+    except Exception as e:
+        print(f"Hata: {e}")
+        bot.send_message(chat_id=chat_id, text="Sayfa gönderilemedi veya bulunamadı!")
+        return False
+
+def send_daily_pages(advance_page=False):
+    current_page = load_current_page()
+    for i in range(2):
+        send_page(current_page + i, CHAT_ID, pin_message=(i == 0))
+    if advance_page:
+        save_current_page(current_page + 2)
+
+# OKUMA KAYIT & RAPOR FONKSİYONLARI
 def get_today_colnum():
     today = get_kuran_gunu()
     cols = sheet_okuma.row_values(1)
@@ -126,11 +142,10 @@ def show_who_read(chat_id):
     okumayanlar = []
     for i, (name, uid) in enumerate(zip(names, user_ids)):
         cell = sheet_okuma.cell(i + 2, col_num).value
-        mention = f'<a href="tg://user?id={uid}">{name}</a>'
         if cell == "✅":
-            okuyanlar.append(mention)
+            okuyanlar.append(f'<a href="tg://user?id={uid}">{name}</a>')
         else:
-            okumayanlar.append(mention)
+            okumayanlar.append(f'<a href="tg://user?id={uid}">{name}</a>')
     msg = "📖 <b>Bugün Okuyanlar:</b>\n"
     if okuyanlar:
         msg += "✅ " + ", ".join(okuyanlar) + "\n"
@@ -152,7 +167,7 @@ def mark_read(first_name, user_id, username, date=None):
     row_num = None
     for idx, uid in enumerate(user_ids):
         if idx == 0:
-            continue
+            continue  # başlık satırı
         if str(uid) == str(user_id):
             row_num = idx + 1
             break
@@ -167,36 +182,9 @@ def mark_read(first_name, user_id, username, date=None):
     sheet_okuma.update_cell(row_num, col_num, "✅")
     return True, f"{first_name} için {date} günü ✅ olarak işaretlendi."
 
-def send_page(page_num, chat_id, pin=False):
-    try:
-        image_id = pages[page_num]
-        image_url = f"https://drive.google.com/uc?export=view&id={image_id}"
-        msg = bot.send_photo(chat_id=chat_id, photo=image_url, caption=f"📖 Kur’an Sayfa {page_num + 1}")
-        if pin:
-            try:
-                bot.unpin_chat_message(chat_id)
-            except Exception:
-                pass
-            try:
-                bot.pin_chat_message(chat_id, msg.message_id)
-            except Exception:
-                pass
-        print(f"Sayfa {page_num + 1} gönderildi ({chat_id})")
-        return True
-    except Exception as e:
-        print(f"Hata: {e}")
-        bot.send_message(chat_id=chat_id, text="Sayfa gönderilemedi veya bulunamadı!")
-        return False
-
-def send_daily_pages(advance_page=False):
-    current_page = get_current_page()
-    send_page(current_page, CHAT_ID, pin=True)
-    send_page(current_page + 1, CHAT_ID)
-    if advance_page:
-        set_current_page(current_page + 2)
-
+# CEZA SİSTEMİ
 def add_penalty(user, amount):
-    sheet_ceza.append_row([user, amount, get_kuran_gunu()])
+    sheet_ceza.append_row([user, amount, datetime.now().strftime("%Y-%m-%d")])
 
 def get_penalties():
     all_rows = sheet_ceza.get_all_records()
@@ -218,6 +206,7 @@ def daily_check_and_penalty():
     except ValueError:
         return
     penalties = []
+    ceza_sert = []
     for i, (name, uid) in enumerate(zip(names, user_ids)):
         cell = sheet_okuma.cell(i + 2, col_num).value
         if cell != "✅":
@@ -229,7 +218,17 @@ def daily_check_and_penalty():
             text=f"❗️ {yesterday} günü okuma yapmadığı için ceza alanlar:\n" + "\n".join(penalties),
             parse_mode="HTML"
         )
+    # Ceza kınama
+    summary = get_penalties()
+    sertler = [k for k, v in summary.items() if v >= 100]
+    if sertler:
+        bot.send_message(
+            chat_id=CHAT_ID,
+            text="⚠️ " + ", ".join(sertler) + " toplam cezan 100 TL'yi geçti! Kur'an'a karşı bu kadar lakayt olmak yakışmıyor! Lütfen toparlan!",
+            parse_mode="HTML"
+        )
 
+# MOTİVASYONLU HATIRLATMA
 def send_motivation(chat_id):
     msg = random.choice(MOTIVATION)
     unread = get_unread_mentions()
@@ -237,11 +236,50 @@ def send_motivation(chat_id):
         msg += f"\n\nHenüz okumayanlar: {unread}"
     bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
 
-# === KOMUTLAR ===
+# EKSİK GÜNLERİ SADECE İLK OKUDUĞU GÜNDEN İTİBAREN BUL
+def eksik_sayfalar(username_or_userid, private=False):
+    names = sheet_okuma.col_values(1)[1:]
+    user_ids = sheet_okuma.col_values(2)[1:]
+    usernames = sheet_okuma.col_values(3)[1:]
+    date_cols = sheet_okuma.row_values(1)[3:]  # İlk 3 sütun meta
+    # Kişiyi bul
+    idx = None
+    for i, (name, uid, uname) in enumerate(zip(names, user_ids, usernames)):
+        if (
+            str(username_or_userid).lower() in (str(uid).lower(), str(uname).lower(), str(name).lower())
+            or (username_or_userid.startswith('@') and username_or_userid.lower() == str(uname).lower())
+        ):
+            idx = i
+            break
+    if idx is None:
+        return "Kullanıcı bulunamadı."
+    okuma_row = sheet_okuma.row_values(idx + 2)[3:]  # 2 = başlık satırı + 1
+    # İlk '✅' bulunduğu indexten sonrasına bak
+    try:
+        first_read_idx = okuma_row.index("✅")
+    except ValueError:
+        first_read_idx = len(okuma_row)
+    eksikler = []
+    for col_idx, cell in enumerate(okuma_row[first_read_idx:], start=first_read_idx):
+        if cell != "✅":
+            sayfa1 = load_current_page() - len(date_cols) + col_idx
+            sayfa2 = sayfa1 + 1
+            # mention veya username
+            mention = (
+                f'<a href="tg://user?id={user_ids[idx]}">{names[idx]}</a>'
+                if not private and user_ids[idx] else (usernames[idx] or names[idx])
+            )
+            eksikler.append(f"{mention} ({sayfa1+1}-{sayfa2})")
+    if eksikler:
+        return f"{names[idx]} eksik günler ve sayfa aralıkları:\n" + "\n".join(eksikler)
+    else:
+        return f"{names[idx]} için eksik gün yok."
+
+# KOMUTLAR
 @bot.message_handler(commands=['gonder'])
 def manual_send(message):
-    current_page = get_current_page()
-    send_page(current_page, message.chat.id, pin=True)
+    current_page = load_current_page()
+    send_page(current_page, message.chat.id, pin_message=True)
     send_page(current_page + 1, message.chat.id)
     bot.send_message(chat_id=message.chat.id, text="✅ Bugünkü 2 sayfa gönderildi!")
 
@@ -279,80 +317,14 @@ def handle_okudum(message):
 
 @bot.message_handler(commands=['rapor'])
 def ceza_rapor(message):
-    args = message.text.split()
-    # Tek kişilik detaylı rapor
-    if len(args) > 1:
-        username = args[1].replace("@", "")
-        row = get_user_row(username)
-        if not row:
-            bot.send_message(chat_id=message.chat.id, text="Kullanıcı bulunamadı.")
-            return
-        name = sheet_okuma.cell(row, 1).value
-        user_id = sheet_okuma.cell(row, 2).value
-        # Ceza
-        penalties = get_penalties()
-        ceza = penalties.get(name, 0)
-        # Okuma istatistiği
-        col_values = sheet_okuma.row_values(1)
-        okuma_vals = sheet_okuma.row_values(row)[1:]
-        okudu = sum([1 for x in okuma_vals if x == "✅"])
-        eksik = sum([1 for x in okuma_vals if x != "✅" and x.strip()])
-        msg = f"📋 <b>{name}</b> raporu:\n\n"
-        msg += f"Toplam ceza: {ceza} TL\n"
-        msg += f"Toplam okuduğu gün: {okudu}\n"
-        msg += f"Kaçırdığı gün: {eksik}\n"
-        if ceza >= 100:
-            msg += f"⚠️ Çok yüksek ceza! Lütfen okuma alışkanlığını düzelt!\n"
-        bot.send_message(chat_id=message.chat.id, text=msg, parse_mode="HTML")
-        return
-    # Toplu rapor
     penalties = get_penalties()
     if not penalties:
         bot.send_message(chat_id=message.chat.id, text="📊 Hiç ceza yok.")
-        return
-    report = "📊 Ceza Raporu:\n"
-    for user, amount in penalties.items():
-        report += f"• {user}: {amount} TL"
-        if amount >= 100:
-            report += " ⚠️ Cezanı öde güzel kardeşim canımızı sıkmaa!\n"
-        else:
-            report += "\n"
-    bot.send_message(chat_id=message.chat.id, text=report)
-
-@bot.message_handler(commands=['eksik'])
-def eksik_komutu(message):
-    args = message.text.split()
-    if len(args) > 1:
-        username = args[1].replace("@", "")
-        row = get_user_row(username)
-        if not row:
-            bot.send_message(chat_id=message.chat.id, text="Kullanıcı bulunamadı.")
-            return
     else:
-        # Kendi özel mesajı
-        if message.chat.type == 'private':
-            user_id = str(message.from_user.id)
-            row = get_user_row(user_id)
-        else:
-            bot.send_message(chat_id=message.chat.id, text="Kimin eksik günleri? /eksik [kullanıcıadı]")
-            return
-        if not row:
-            bot.send_message(chat_id=message.chat.id, text="Kullanıcı bulunamadı.")
-            return
-    name = sheet_okuma.cell(row, 1).value
-    col_values = sheet_okuma.row_values(1)[1:]
-    okuma_vals = sheet_okuma.row_values(row)[1:]
-    eksikler = []
-    for i, v in enumerate(okuma_vals):
-        if v != "✅" and col_values[i].strip():
-            page_start = get_current_page() - (len(col_values) - i)
-            page_str = f"({page_start+1}-{page_start+2})"
-            eksikler.append(f"{col_values[i]} {page_str}")
-    if not eksikler:
-        bot.send_message(chat_id=message.chat.id, text=f"{name} için hiç eksik gün yok!")
-        return
-    msg = f"{name} eksik günler ve sayfa aralıkları:\n" + "\n".join(eksikler)
-    bot.send_message(chat_id=message.chat.id, text=msg)
+        report = "📊 Ceza Raporu:\n"
+        for user, amount in penalties.items():
+            report += f"• {user}: {amount} TL\n"
+        bot.send_message(chat_id=message.chat.id, text=report)
 
 @bot.message_handler(commands=['kimlerokudu', 'kimokudu'])
 def kimler_okudu(message):
@@ -366,19 +338,35 @@ def komutlar_listesi(message):
         "<b>/sayfa [n]</b> — Belirli bir Kur’an sayfasını gönderir (grup/özel).\n"
         "<b>/okudum</b> — (Grup) O gün okuduğunuzu işaretler, ardından okuyanlar tablosu gelir.\n"
         "<b>/kimlerokudu</b> — (Grup) Bugün okuyan/okumayan raporu.\n"
-        "<b>/rapor</b> — Ceza raporunu gönderir veya /rapor [kullanıcı] ile detaylı bilgi.\n"
-        "<b>/eksik</b> — (Özel) Eksik günlerinizi veya /eksik [kullanıcı] ile eksikleri görürsünüz.\n"
+        "<b>/rapor</b> — (Grup) Ceza raporunu gönderir.\n"
         "<b>/hatirlat</b> — (Grup) Motive sözlerle hatırlatma.\n"
+        "<b>/eksik</b> — Okumadığınız günlerin sayfa aralıklarını gösterir.\n"
         "<b>/yardim</b> veya <b>/komutlar</b> — Bu rehberi gösterir."
     )
     bot.send_message(chat_id=message.chat.id, text=help_text, parse_mode="HTML")
 
 @bot.message_handler(commands=['hatirlat'])
 def manuel_hatirlat(message):
-    if message.chat.type != 'private':
-        send_motivation(message.chat.id)
+    send_motivation(message.chat.id)
+
+@bot.message_handler(commands=['eksik'])
+def eksik_komutu(message):
+    # Gruba veya özelden yazılırsa
+    user = message.from_user
+    arg = None
+    try:
+        arg = message.text.split()[1]
+    except IndexError:
+        pass
+    if arg:
+        # /eksik username veya user_id ile başkası sorgulanabilir (admin)
+        resp = eksik_sayfalar(arg)
     else:
-        bot.send_message(chat_id=message.chat.id, text=random.choice(MOTIVATION))
+        # kendi eksikleri
+        username = f"@{user.username}" if user.username else str(user.id)
+        private = (message.chat.type == "private")
+        resp = eksik_sayfalar(username, private=private)
+    bot.send_message(chat_id=message.chat.id, text=resp, parse_mode="HTML")
 
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome_new_member(message):
@@ -392,9 +380,10 @@ def welcome_new_member(message):
         )
         add_or_update_user(first_name, user_id, username)
 
+# SCHEDULER (Her gün 11:30'da yeni sayfa ve ceza, 2 saatte bir hatırlatma)
 def scheduler():
     while True:
-        now = datetime.utcnow() + timedelta(hours=3)  # Türkiye saati!
+        now = datetime.now()
         hhmm = now.strftime("%H:%M")
         if hhmm == "11:30":
             daily_check_and_penalty()
@@ -405,6 +394,7 @@ def scheduler():
             systime.sleep(60)
         systime.sleep(20)
 
+# FLASK APP (Render / UptimeRobot için)
 app = Flask('')
 
 @app.route('/')
