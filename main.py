@@ -315,7 +315,7 @@ def handle_okudum(message):
     else:
         bot.send_message(chat_id=message.chat.id, text=f"Hata: {msg}")
 
-@bot.message_handler(commands=['rapor'])
+@bot.message_handler(commands=['cezalar'])
 def ceza_rapor(message):
     penalties = get_penalties()
     if not penalties:
@@ -344,6 +344,73 @@ def komutlar_listesi(message):
         "<b>/yardim</b> veya <b>/komutlar</b> — Bu rehberi gösterir."
     )
     bot.send_message(chat_id=message.chat.id, text=help_text, parse_mode="HTML")
+    
+@bot.message_handler(commands=['rapor'])
+def rapor_komutu(message):
+    user = message.from_user
+    args = message.text.split()
+    arg = None
+    try:
+        arg = args[1]
+    except IndexError:
+        pass
+
+    # Kişiyi bul
+    names = sheet_okuma.col_values(1)[1:]
+    user_ids = sheet_okuma.col_values(2)[1:]
+    usernames = sheet_okuma.col_values(3)[1:]
+    date_cols = sheet_okuma.row_values(1)[3:]
+
+    idx = None
+    for i, (name, uid, uname) in enumerate(zip(names, user_ids, usernames)):
+        if arg:
+            if (
+                str(arg).lower() in (str(uid).lower(), str(uname).lower(), str(name).lower())
+                or (arg.startswith('@') and arg.lower() == str(uname).lower())
+            ):
+                idx = i
+                break
+        else:
+            # Boşsa kendi id ya da username
+            if str(user.id) == str(uid) or (user.username and ("@" + user.username) == uname):
+                idx = i
+                break
+    if idx is None:
+        bot.send_message(message.chat.id, "Kullanıcı bulunamadı.")
+        return
+
+    # Verileri çek
+    okuma_row = sheet_okuma.row_values(idx + 2)[3:]
+    try:
+        first_read_idx = okuma_row.index("✅")
+    except ValueError:
+        bot.send_message(message.chat.id, "Henüz hiç okuma kaydı yok.")
+        return
+
+    total_days = len(okuma_row[first_read_idx:])
+    read_days = sum(1 for v in okuma_row[first_read_idx:] if v == "✅")
+    unread_days = total_days - read_days
+    success_rate = (read_days / total_days * 100) if total_days else 0
+
+    # Ceza hesapla
+    penalties = get_penalties()
+    total_penalty = penalties.get(names[idx], 0)
+
+    # Son gün okudu mu?
+    last_date = date_cols[-1] if date_cols else "?"
+    last_read = okuma_row[-1] if okuma_row else ""
+    last_status = "✅" if last_read == "✅" else "❌"
+
+    rapor = (
+        f"📊 <b>{names[idx]} Kullanıcı Raporu</b>\n\n"
+        f"• Toplam takip edilen gün: <b>{total_days}</b>\n"
+        f"• Okuduğu gün: <b>{read_days}</b>\n"
+        f"• Okumadığı gün: <b>{unread_days}</b>\n"
+        f"• Başarı oranı: <b>{success_rate:.1f}%</b>\n"
+        f"• Ceza toplamı: <b>{total_penalty} TL</b>\n"
+        f"• Son gün ({last_date}) durumu: {last_status}\n"
+    )
+    bot.send_message(message.chat.id, rapor, parse_mode="HTML")
 
 @bot.message_handler(commands=['hatirlat'])
 def manuel_hatirlat(message):
