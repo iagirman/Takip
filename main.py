@@ -97,12 +97,14 @@ def send_page(page_num, chat_id):
         bot.send_message(chat_id=chat_id, text="Sayfa gönderilemedi veya bulunamadı!")
         return False
 
-def send_daily_pages(advance_page=False):
-    current_page = load_current_page()
-    for i in range(2):
-        send_page(current_page + i, CHAT_ID)
-    if advance_page:
-        save_current_page(current_page + 2)
+# ========== GÜNLÜK SAYFA GÖNDERİMİ (ÖNCE ARTTIR, SONRA GÖNDER) ==========
+def send_new_daily_pages():
+    # Önce current_page ilerlet (+2)
+    new_page = load_current_page() + 2
+    save_current_page(new_page)
+    # Sonra yeni current_page'den iki sayfa gönder
+    send_page(new_page, CHAT_ID)
+    send_page(new_page + 1, CHAT_ID)
 
 # ========== OKUMA KAYIT & RAPOR FONKSİYONLARI ==========
 def get_today_colnum():
@@ -232,6 +234,7 @@ def send_motivation(chat_id):
 # ========== KOMUTLAR ==========
 @bot.message_handler(commands=['gonder'])
 def manual_send(message):
+    # Elle göndermede ilerletme olmaz, current_page'den gönderir
     current_page = load_current_page()
     send_page(current_page, message.chat.id)
     send_page(current_page + 1, message.chat.id)
@@ -311,6 +314,10 @@ def manuel_hatirlat(message):
     else:
         bot.send_message(chat_id=message.chat.id, text=random.choice(MOTIVATION))
 
+@bot.message_handler(commands=['saat'])
+def saat_komutu(message):
+    bot.send_message(chat_id=message.chat.id, text=f"Şu an botun gördüğü saat (UTC+3):\n{now_tr()}")
+
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome_new_member(message):
     for new_member in message.new_chat_members:
@@ -331,7 +338,7 @@ def scheduler():
         if hhmm == "11:30":
             print(f"[{now}] --> Gün BAŞLANGICI (ceza ve sayfa gönderimi)")
             daily_check_and_penalty()
-            send_daily_pages(advance_page=True)
+            send_new_daily_pages()  # Önce arttır, sonra gönder!
             systime.sleep(90)
         elif now.hour >= 6 and now.hour < 24 and now.minute == 0 and now.hour % 2 == 0:
             print(f"[{now}] --> 2 saatte bir hatırlatma")
