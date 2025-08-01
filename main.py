@@ -239,6 +239,12 @@ def send_motivation(chat_id):
     bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
 
 # KOMUTLAR
+@bot.message_handler(commands=['saat'])
+def saat_kontrol(message):
+    tz_tr = timezone(timedelta(hours=3))
+    now = datetime.now(tz_tr)
+    bot.send_message(chat_id=message.chat.id, text=f"Türkiye saatiyle şu an: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+
 @bot.message_handler(commands=['gonder'])
 def manual_send(message):
     current_page = load_current_page()
@@ -368,6 +374,7 @@ def komutlar_listesi(message):
         "<b>/okudum</b> — (Grup) O gün okuduğunuzu işaretler, ardından okuyanlar tablosu gelir.\n"
         "<b>/kimlerokudu</b> — (Grup) Bugün okuyan/okumayan raporu.\n"
         "<b>/cezalar</b> — (Grup) Ceza raporunu gönderir.\n"
+        "<b>/rapor</b> kişiye ait rapor gösterir.\n"
         "<b>/hatirlat</b> — (Grup) Motive sözlerle hatırlatma.\n"
         "<b>/yardim</b> veya <b>/komutlar</b> — Bu rehberi gösterir."
     )
