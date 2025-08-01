@@ -238,17 +238,13 @@ def send_motivation(chat_id):
         msg += f"\n\nHenüz okumayanlar: {unread}"
     bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
 
-# KOMUTLAR
 
-# MOTİVASYONLU HATIRLATMA
-def send_motivation(chat_id):
-    msg = random.choice(MOTIVATION)
-    unread = get_unread_mentions()
-    if unread:
-        msg += f"\n\nHenüz okumayanlar: {unread}"
-    bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
 
 # KOMUTLAR
+@bot.message_handler(commands=['hatirlat'])
+def manuel_hatirlat(message):
+    send_motivation(message.chat.id)
+
 @bot.message_handler(commands=['saat'])
 def saat_kontrol(message):
     tz_tr = timezone(timedelta(hours=3))
