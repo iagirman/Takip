@@ -45,6 +45,14 @@ sheet_ceza = gsheet.open_by_key(SHEET_ID).worksheet("Cezalar")
 sheet_ayar = gsheet.open_by_key(SHEET_ID).worksheet("BotAyar")  # current_page burada tutulacak
 sheet_arsiv = gsheet.open_by_key(SHEET_ID).worksheet("OkumaArsiv")
 
+def save_penalties(penalties: dict):
+    sheet_cezalar = sheet.worksheet("Cezalar")
+    names = sheet_cezalar.col_values(1)[1:]
+
+    for i, name in enumerate(names):
+        if name in penalties:
+            sheet_cezalar.update_cell(i + 2, 2, penalties[name])  # 2. sütun: Ceza
+
 # TÜRKİYE SAATİYLE GÜN HESABI (11:30)
 def get_kuran_gunu(now=None):
     tz_tr = timezone(timedelta(hours=3))
