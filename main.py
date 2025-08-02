@@ -51,7 +51,7 @@ def save_penalties(penalties: dict):
 
     for i, name in enumerate(names):
         if name in penalties:
-            sheet_cezalar.update_cell(i + 2, 2, penalties[name])  # 2. sütun: Ceza
+            sheet_ceza.update_cell(i + 2, 2, penalties[name])  # 2. sütun: Ceza
 
 
 # TÜRKİYE SAATİYLE GÜN HESABI (11:30)
