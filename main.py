@@ -447,57 +447,54 @@ def eksik_komutu(message):
 
 @bot.message_handler(commands=['odedim'])
 def odeme_bildir(message):
-    user = message.from_user
-    args = message.text.split()
-    
-    if len(args) != 2:
-        bot.send_message(chat_id=message.chat.id, text="Lütfen ödeme miktarını belirtin. Örn: /odedim 20")
-        return
-    
-    try:
-        miktar = float(args[1])
-    except ValueError:
-        bot.send_message(chat_id=message.chat.id, text="Geçerli bir sayı girin. Örn: /odedim 20")
+    # ❌ Eğer özel mesaj ise işlem yapma
+    if message.chat.type == "private":
+        bot.send_message(message.chat.id, "Bu komut sadece grup içinde çalışır.")
         return
 
-    # Kullanıcının adı (ceza kaydı için)
+    try:
+        miktar = float(message.text.split()[1])
+    except (IndexError, ValueError):
+        bot.reply_to(message, "Kullanım: /odedim <tutar>")
+        return
+
+    user = message.from_user
+    user_id = str(user.id)
+    name = user.first_name or user.username or "Kullanıcı"
+
+    # Google Sheet'te kullanıcıyı bul
     names = sheet_okuma.col_values(1)[1:]
     user_ids = sheet_okuma.col_values(2)[1:]
-    usernames = sheet_okuma.col_values(3)[1:]
 
     idx = None
     for i, uid in enumerate(user_ids):
-        if str(user.id) == str(uid):
+        if str(uid) == user_id:
             idx = i
             break
-    
+
     if idx is None:
-        bot.send_message(chat_id=message.chat.id, text="Kullanıcı sistemde bulunamadı.")
+        bot.reply_to(message, "Kullanıcı bulunamadı.")
         return
 
-    name = names[idx]
+    name_in_sheet = names[idx]
     penalties = get_penalties()
-    mevcut_ceza = penalties.get(name, 0)
+    current_penalty = penalties.get(name_in_sheet, 0)
 
-    if miktar > mevcut_ceza:
-        bot.send_message(chat_id=message.chat.id, text=f"⚠️ Ödeme tutarı mevcut cezadan büyük. Toplam cezanız: {mevcut_ceza} TL")
-        return
-
-    # Yeni ceza miktarını hesapla ve yaz
-    yeni_ceza = mevcut_ceza - miktar
-    penalties[name] = yeni_ceza
+    # Ceza miktarını düş
+    new_penalty = max(0, current_penalty - miktar)
+    penalties[name_in_sheet] = new_penalty
     save_penalties(penalties)
 
-    teyit_kullanici_id = 993517466
-    mention = f'<a href="tg://user?id={user.id}">{name}</a>'
-    teyit_mesaj = (
-        f"{mention} adlı kullanıcı <b>{miktar:.2f} TL</b> ödeme yaptığını bildirdi.\n\n"
-        f"Kalan cezası: <b>{yeni_ceza:.2f} TL</b>\n"
-        f"✅ Ödeme teyidini lütfen onaylayın."
+    # Grup içinde duyuru yap
+    teyitci_user_id = 993517466
+    bot.send_message(
+        chat_id=message.chat.id,
+        text=(
+            f"💵 <b>{name_in_sheet}</b>, <b>{miktar:.2f} TL</b> ödeme yaptı.\n"
+            f"<a href='tg://user?id={teyitci_user_id}'>Teyit</a> edilmesini bekliyor."
+        ),
+        parse_mode="HTML"
     )
-
-    bot.send_message(chat_id=teyit_kullanici_id, text=teyit_mesaj, parse_mode="HTML")
-    bot.send_message(chat_id=message.chat.id, text="💸 Ödeme bildiriminiz alındı. Teyit bekleniyor.")
 
 @bot.message_handler(commands=['yardim', 'komutlar', 'help'])
 def komutlar_listesi(message):
