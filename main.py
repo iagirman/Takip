@@ -506,11 +506,7 @@ def odeme_bildir(message):
     )
 @bot.message_handler(commands=['grup'])
 def grup_raporu(message):
-    if message.chat.type == "private":
-        bot.reply_to(message, "Bu komut sadece grup içinde çalışır.")
-        return
-
-    
+  
     names = sheet_arsiv.col_values(1)[1:]
     okuma_data = sheet_arsiv.get_all_values()[1:]
     tarih_sutunlari = sheet_arsiv.row_values(1)[3:]
@@ -536,42 +532,25 @@ def grup_raporu(message):
 
         rapor_listesi.append((ad, okunan, toplam, yuzde))
 
-    # başarı oranına göre sırala
+    # Başarı oranına göre sırala
     rapor_listesi.sort(key=lambda x: x[3], reverse=True)
+
+    def metinsel_bar(yuzde):
+        filled = int(yuzde / 5)  # 20 blok
+        return '█' * filled + '░' * (20 - filled)
 
     msg = "<b>📊 Grup Başarı Durumu:</b>\n\n"
     for i, (ad, okunan, toplam, yuzde) in enumerate(rapor_listesi, start=1):
-        filled_blocks = int(yuzde // 10)
-        empty_blocks = 10 - filled_blocks
-        bar = "🟩" * filled_blocks + "⬜️" * empty_blocks
+        bar = metinsel_bar(yuzde)
         msg += f"{i}. <b>{ad}</b>: {okunan}/{toplam} gün (%{yuzde:.1f})\n{bar}\n\n"
 
     # Toplam başarı oranı
     genel_oran = (toplam_okuma / toplam_gun) * 100 if toplam_gun else 0
-    msg += f"\n<b>📌 Grup Genel Başarı Oranı:</b> %{genel_oran:.1f}"
+    genel_bar = metinsel_bar(genel_oran)
+    msg += f"\n<b>📌 Grup Genel Başarı Oranı:</b> %{genel_oran:.1f}\n{genel_bar}"
 
     bot.send_message(message.chat.id, msg, parse_mode="HTML")
 
-    # ✅ Pie chart gönder
-    try:
-        import matplotlib.pyplot as plt
-        import io
-
-        labels = ['Okunan Günler', 'Okunmayan Günler']
-        sizes = [toplam_okuma, toplam_gun - toplam_okuma]
-        colors = ['#4CAF50', '#F44336']
-
-        fig, ax = plt.subplots()
-        ax.pie(sizes, labels=labels, autopct='%1.1f%%', colors=colors, startangle=90)
-        ax.axis('equal')  # Daire gibi
-
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png')
-        buf.seek(0)
-        bot.send_photo(message.chat.id, photo=buf, caption="📈 Grup Genel Başarı Pastası")
-        plt.close()
-    except Exception as e:
-        print("Pasta grafik hatası:", e)
 
 @bot.message_handler(commands=['yardim', 'komutlar', 'help'])
 def komutlar_listesi(message):
