@@ -506,7 +506,10 @@ def odeme_bildir(message):
     )
 @bot.message_handler(commands=['grup'])
 def grup_raporu(message):
-  
+    if message.chat.type == "private":
+        bot.reply_to(message, "Bu komut sadece grup içinde çalışır.")
+        return
+
     names = sheet_arsiv.col_values(1)[1:]
     okuma_data = sheet_arsiv.get_all_values()[1:]
     tarih_sutunlari = sheet_arsiv.row_values(1)[3:]
@@ -535,18 +538,18 @@ def grup_raporu(message):
     # Başarı oranına göre sırala
     rapor_listesi.sort(key=lambda x: x[3], reverse=True)
 
-    def metinsel_bar(yuzde):
-        filled = int(yuzde / 5)  # 20 blok
-        return '█' * filled + '░' * (20 - filled)
+    def emoji_bar(yuzde):
+        filled = int(yuzde / 10)
+        empty = 10 - filled
+        return "🟩" * filled + "🟥" * empty
 
     msg = "<b>📊 Grup Başarı Durumu:</b>\n\n"
     for i, (ad, okunan, toplam, yuzde) in enumerate(rapor_listesi, start=1):
-        bar = metinsel_bar(yuzde)
+        bar = emoji_bar(yuzde)
         msg += f"{i}. <b>{ad}</b>: {okunan}/{toplam} gün (%{yuzde:.1f})\n{bar}\n\n"
 
-    # Toplam başarı oranı
     genel_oran = (toplam_okuma / toplam_gun) * 100 if toplam_gun else 0
-    genel_bar = metinsel_bar(genel_oran)
+    genel_bar = emoji_bar(genel_oran)
     msg += f"\n<b>📌 Grup Genel Başarı Oranı:</b> %{genel_oran:.1f}\n{genel_bar}"
 
     bot.send_message(message.chat.id, msg, parse_mode="HTML")
