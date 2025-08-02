@@ -297,13 +297,14 @@ def handle_okudum(message):
     args = message.text.split()
     date = None
     if len(args) > 1:
-        date = args[1]
+        date = args[1]  # YYYY-MM-DD formatı beklenir
     success, msg = mark_read(first_name, user_id, username, date)
     if success:
         bot.send_message(chat_id=message.chat.id, text=msg)
         show_who_read(message.chat.id)
     else:
         bot.send_message(chat_id=message.chat.id, text=f"Hata: {msg}")
+
 @bot.message_handler(commands=['rapor'])
 def rapor_komutu(message):
     user = message.from_user
@@ -395,59 +396,54 @@ def eksik_komutu(message):
     except IndexError:
         pass
 
+    # Google Sheets verilerini al
     names = sheet_okuma.col_values(1)[1:]
     user_ids = sheet_okuma.col_values(2)[1:]
     usernames = sheet_okuma.col_values(3)[1:]
-    date_cols = sheet_okuma.row_values(1)[3:]
+    date_cols = sheet_okuma.row_values(1)[3:]  # ilk 3 sütun kullanıcı bilgisi
 
-    # Kimi sorgulayacağını bul
+    # Kullanıcıyı bul
     idx = None
-    if arg:
-        for i, (name, uid, uname) in enumerate(zip(names, user_ids, usernames)):
-            if (
-                str(arg).lower() in (str(uid).lower(), str(uname).lower(), str(name).lower())
-                or (arg.startswith('@') and arg.lower() == str(uname).lower())
-            ):
+    for i, (name, uid, uname) in enumerate(zip(names, user_ids, usernames)):
+        if arg:
+            if str(arg).lower() in (str(uid).lower(), str(uname).lower(), str(name).lower()) \
+                    or (arg.startswith('@') and arg.lower() == str(uname).lower()):
                 idx = i
                 break
-        if idx is None:
-            bot.send_message(message.chat.id, "Kullanıcı bulunamadı.")
-            return
-    else:
-        for i, (name, uid, uname) in enumerate(zip(names, user_ids, usernames)):
+        else:
             if str(user.id) == str(uid) or (user.username and ("@" + user.username) == uname):
                 idx = i
                 break
-        if idx is None:
-            bot.send_message(message.chat.id, "Kullanıcı bulunamadı.")
-            return
 
-    okuma_row = sheet_okuma.row_values(idx + 2)[3:]  # 2: başlık + 1-index
-    # İlk '✅' işaretinden sonrasına bak
+    if idx is None:
+        bot.send_message(message.chat.id, "Kullanıcı bulunamadı.")
+        return
+
+    # Okuma satırı
+    okuma_row = sheet_okuma.row_values(idx + 2)[3:]  # 2: başlık, 1-index offset
     try:
         first_read_idx = okuma_row.index("✅")
     except ValueError:
         first_read_idx = len(okuma_row)
 
-    eksikler = []
-    # sayfa hesaplama
     current_page = load_current_page()
+    toplam_gun = len(okuma_row)
+
+    eksikler = []
     for col_idx, cell in enumerate(okuma_row[first_read_idx:], start=first_read_idx):
         if cell != "✅":
-            sayfa1 = current_page - len(date_cols) + col_idx
+            tarih = date_cols[col_idx]
+            sayfa1 = current_page - 2 * (toplam_gun - col_idx)
             sayfa2 = sayfa1 + 1
-            mention = (
-                f'<a href="tg://user?id={user_ids[idx]}">{names[idx]}</a>'
-                if user.username != usernames[idx] else (usernames[idx] or names[idx])
-            )
-            eksikler.append(f"{mention} ({sayfa1+1}-{sayfa2})")
+            eksikler.append(f"{tarih}: {sayfa1 + 1}–{sayfa2 + 1}")
 
     if eksikler:
-        msg = f"{names[idx]} eksik günler ve sayfa aralıkları:\n" + "\n".join(eksikler)
+        msg = f"<b>{names[idx]} için eksik okuma günleri:</b>\n\n" + "\n".join(f"❌ {e}" for e in eksikler)
     else:
-        msg = f"{names[idx]} için eksik gün yok."
+        msg = f"✅ {names[idx]} için eksik gün yok."
 
     bot.send_message(chat_id=message.chat.id, text=msg, parse_mode="HTML")
+
 
 
 @bot.message_handler(commands=['yardim', 'komutlar', 'help'])
