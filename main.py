@@ -257,7 +257,7 @@ def saat_kontrol(message):
 @bot.message_handler(commands=['gonder'])
 def manual_send(message):
     current_page = load_current_page()
-    send_page(current_page, message.chat.id, pin_message=True)
+    send_page(current_page, message.chat.id)
     send_page(current_page + 1, message.chat.id)
     bot.send_message(chat_id=message.chat.id, text="✅ Bugünkü 2 sayfa gönderildi!")
 
