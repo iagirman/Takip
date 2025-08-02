@@ -486,7 +486,7 @@ def odeme_bildir(message):
     save_penalties(penalties)
 
     # Grup içinde duyuru yap
-    teyitci_user_id = 993517466
+    teyitci_user_id = 1993517466
     bot.send_message(
         chat_id=message.chat.id,
         text=(
