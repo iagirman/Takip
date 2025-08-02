@@ -410,7 +410,7 @@ def eksik_komutu(message):
                 idx = i
                 break
         else:
-            if str(user.id) == str(uid) or (user.username and ("@" + user.username) == uname):
+            if str(user.id) == str(uid) or (user.username and ("@" + user.username).lower() == str(uname).lower()):
                 idx = i
                 break
 
