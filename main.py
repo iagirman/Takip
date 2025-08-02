@@ -99,10 +99,13 @@ def send_page(page_num, chat_id, pin_message=False):
 
 def send_daily_pages(advance_page=False):
     current_page = load_current_page()
+
+    if advance_page:
+        current_page += 2
+        save_current_page(current_page)
+
     for i in range(2):
         send_page(current_page + i, CHAT_ID, pin_message=(i == 0))
-    if advance_page:
-        save_current_page(current_page + 2)
 
 # OKUMA KAYIT & RAPOR FONKSİYONLARI
 def get_today_colnum():
@@ -383,6 +386,70 @@ def ceza_rapor(message):
 def kimler_okudu(message):
     show_who_read(message.chat.id)
 
+@bot.message_handler(commands=['eksik'])
+def eksik_komutu(message):
+    user = message.from_user
+    arg = None
+    try:
+        arg = message.text.split()[1]
+    except IndexError:
+        pass
+
+    names = sheet_okuma.col_values(1)[1:]
+    user_ids = sheet_okuma.col_values(2)[1:]
+    usernames = sheet_okuma.col_values(3)[1:]
+    date_cols = sheet_okuma.row_values(1)[3:]
+
+    # Kimi sorgulayacağını bul
+    idx = None
+    if arg:
+        for i, (name, uid, uname) in enumerate(zip(names, user_ids, usernames)):
+            if (
+                str(arg).lower() in (str(uid).lower(), str(uname).lower(), str(name).lower())
+                or (arg.startswith('@') and arg.lower() == str(uname).lower())
+            ):
+                idx = i
+                break
+        if idx is None:
+            bot.send_message(message.chat.id, "Kullanıcı bulunamadı.")
+            return
+    else:
+        for i, (name, uid, uname) in enumerate(zip(names, user_ids, usernames)):
+            if str(user.id) == str(uid) or (user.username and ("@" + user.username) == uname):
+                idx = i
+                break
+        if idx is None:
+            bot.send_message(message.chat.id, "Kullanıcı bulunamadı.")
+            return
+
+    okuma_row = sheet_okuma.row_values(idx + 2)[3:]  # 2: başlık + 1-index
+    # İlk '✅' işaretinden sonrasına bak
+    try:
+        first_read_idx = okuma_row.index("✅")
+    except ValueError:
+        first_read_idx = len(okuma_row)
+
+    eksikler = []
+    # sayfa hesaplama
+    current_page = load_current_page()
+    for col_idx, cell in enumerate(okuma_row[first_read_idx:], start=first_read_idx):
+        if cell != "✅":
+            sayfa1 = current_page - len(date_cols) + col_idx
+            sayfa2 = sayfa1 + 1
+            mention = (
+                f'<a href="tg://user?id={user_ids[idx]}">{names[idx]}</a>'
+                if user.username != usernames[idx] else (usernames[idx] or names[idx])
+            )
+            eksikler.append(f"{mention} ({sayfa1+1}-{sayfa2})")
+
+    if eksikler:
+        msg = f"{names[idx]} eksik günler ve sayfa aralıkları:\n" + "\n".join(eksikler)
+    else:
+        msg = f"{names[idx]} için eksik gün yok."
+
+    bot.send_message(chat_id=message.chat.id, text=msg, parse_mode="HTML")
+
+
 @bot.message_handler(commands=['yardim', 'komutlar', 'help'])
 def komutlar_listesi(message):
     help_text = (
@@ -394,6 +461,7 @@ def komutlar_listesi(message):
         "<b>/cezalar</b> — (Grup) Ceza raporunu gönderir.\n"
         "<b>/rapor</b> kişiye ait rapor gösterir.\n"
         "<b>/hatirlat</b> — (Grup) Motive sözlerle hatırlatma.\n"
+        "<b>/eksik</b> — (Grup) Okumadığınız sayfaları gösterir\n"
         "<b>/yardim</b> veya <b>/komutlar</b> — Bu rehberi gösterir."
     )
     bot.send_message(chat_id=message.chat.id, text=help_text, parse_mode="HTML")
