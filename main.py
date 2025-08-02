@@ -445,19 +445,19 @@ def eksik_komutu(message):
 
     bot.send_message(chat_id=message.chat.id, text=msg, parse_mode="HTML")
 
-@bot.message_handler(commands=['ödedim'])
+@bot.message_handler(commands=['odedim'])
 def odeme_bildir(message):
     user = message.from_user
     args = message.text.split()
     
     if len(args) != 2:
-        bot.send_message(chat_id=message.chat.id, text="Lütfen ödeme miktarını belirtin. Örn: /ödedim 20")
+        bot.send_message(chat_id=message.chat.id, text="Lütfen ödeme miktarını belirtin. Örn: /odedim 20")
         return
     
     try:
         miktar = float(args[1])
     except ValueError:
-        bot.send_message(chat_id=message.chat.id, text="Geçerli bir sayı girin. Örn: /ödedim 20")
+        bot.send_message(chat_id=message.chat.id, text="Geçerli bir sayı girin. Örn: /odedim 20")
         return
 
     # Kullanıcının adı (ceza kaydı için)
