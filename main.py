@@ -43,6 +43,7 @@ gsheet = gspread.authorize(creds)
 sheet_okuma = gsheet.open_by_key(SHEET_ID).worksheet("Okuma Takip")
 sheet_ceza = gsheet.open_by_key(SHEET_ID).worksheet("Cezalar")
 sheet_ayar = gsheet.open_by_key(SHEET_ID).worksheet("BotAyar")  # current_page burada tutulacak
+sheet_arsiv = gsheet.open_by_key(SHEET_ID).worksheet("OkumaArsiv")
 
 # TÜRKİYE SAATİYLE GÜN HESABI (11:30)
 def get_kuran_gunu(now=None):
