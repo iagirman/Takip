@@ -504,6 +504,74 @@ def odeme_bildir(message):
         ),
         parse_mode="HTML"
     )
+@bot.message_handler(commands=['grup'])
+def grup_raporu(message):
+    if message.chat.type == "private":
+        bot.reply_to(message, "Bu komut sadece grup içinde çalışır.")
+        return
+
+    
+    names = sheet_arsiv.col_values(1)[1:]
+    okuma_data = sheet_arsiv.get_all_values()[1:]
+    tarih_sutunlari = sheet_arsiv.row_values(1)[3:]
+
+    rapor_listesi = []
+    toplam_okuma = 0
+    toplam_gun = 0
+
+    for satir in okuma_data:
+        ad = satir[0]
+        okuma = satir[3:]
+        try:
+            ilk_okunan = okuma.index("✅")
+        except ValueError:
+            continue
+
+        toplam = len(okuma[ilk_okunan:])
+        okunan = sum(1 for x in okuma[ilk_okunan:] if x == "✅")
+        yuzde = (okunan / toplam) * 100 if toplam > 0 else 0
+
+        toplam_okuma += okunan
+        toplam_gun += toplam
+
+        rapor_listesi.append((ad, okunan, toplam, yuzde))
+
+    # başarı oranına göre sırala
+    rapor_listesi.sort(key=lambda x: x[3], reverse=True)
+
+    msg = "<b>📊 Grup Başarı Durumu:</b>\n\n"
+    for i, (ad, okunan, toplam, yuzde) in enumerate(rapor_listesi, start=1):
+        filled_blocks = int(yuzde // 10)
+        empty_blocks = 10 - filled_blocks
+        bar = "🟩" * filled_blocks + "⬜️" * empty_blocks
+        msg += f"{i}. <b>{ad}</b>: {okunan}/{toplam} gün (%{yuzde:.1f})\n{bar}\n\n"
+
+    # Toplam başarı oranı
+    genel_oran = (toplam_okuma / toplam_gun) * 100 if toplam_gun else 0
+    msg += f"\n<b>📌 Grup Genel Başarı Oranı:</b> %{genel_oran:.1f}"
+
+    bot.send_message(message.chat.id, msg, parse_mode="HTML")
+
+    # ✅ Pie chart gönder
+    try:
+        import matplotlib.pyplot as plt
+        import io
+
+        labels = ['Okunan Günler', 'Okunmayan Günler']
+        sizes = [toplam_okuma, toplam_gun - toplam_okuma]
+        colors = ['#4CAF50', '#F44336']
+
+        fig, ax = plt.subplots()
+        ax.pie(sizes, labels=labels, autopct='%1.1f%%', colors=colors, startangle=90)
+        ax.axis('equal')  # Daire gibi
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        bot.send_photo(message.chat.id, photo=buf, caption="📈 Grup Genel Başarı Pastası")
+        plt.close()
+    except Exception as e:
+        print("Pasta grafik hatası:", e)
 
 @bot.message_handler(commands=['yardim', 'komutlar', 'help'])
 def komutlar_listesi(message):
@@ -517,6 +585,8 @@ def komutlar_listesi(message):
         "<b>/rapor</b> kişiye ait rapor gösterir.\n"
         "<b>/hatirlat</b> — (Grup) Motive sözlerle hatırlatma.\n"
         "<b>/eksik</b> — (Grup) Okumadığınız sayfaları gösterir\n"
+        "<b>/grup</b> — grup başarı oranı gosterir."
+        "<b>/odedim</b> — komutun yanına odemek istediginiz miktarı yazınız."
         "<b>/yardim</b> veya <b>/komutlar</b> — Bu rehberi gösterir."
     )
     bot.send_message(chat_id=message.chat.id, text=help_text, parse_mode="HTML")
