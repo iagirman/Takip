@@ -46,8 +46,8 @@ sheet_ayar = gsheet.open_by_key(SHEET_ID).worksheet("BotAyar")  # current_page b
 sheet_arsiv = gsheet.open_by_key(SHEET_ID).worksheet("OkumaArsiv")
 
 def save_penalties(penalties: dict):
-    sheet_cezalar = gsheet.worksheet("Cezalar")
-    names = sheet_cezalar.col_values(1)[1:]
+
+    names = sheet_ceza.col_values(1)[1:]
 
     for i, name in enumerate(names):
         if name in penalties:
