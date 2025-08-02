@@ -445,7 +445,59 @@ def eksik_komutu(message):
 
     bot.send_message(chat_id=message.chat.id, text=msg, parse_mode="HTML")
 
+@bot.message_handler(commands=['ödedim'])
+def odeme_bildir(message):
+    user = message.from_user
+    args = message.text.split()
+    
+    if len(args) != 2:
+        bot.send_message(chat_id=message.chat.id, text="Lütfen ödeme miktarını belirtin. Örn: /ödedim 20")
+        return
+    
+    try:
+        miktar = float(args[1])
+    except ValueError:
+        bot.send_message(chat_id=message.chat.id, text="Geçerli bir sayı girin. Örn: /ödedim 20")
+        return
 
+    # Kullanıcının adı (ceza kaydı için)
+    names = sheet_okuma.col_values(1)[1:]
+    user_ids = sheet_okuma.col_values(2)[1:]
+    usernames = sheet_okuma.col_values(3)[1:]
+
+    idx = None
+    for i, uid in enumerate(user_ids):
+        if str(user.id) == str(uid):
+            idx = i
+            break
+    
+    if idx is None:
+        bot.send_message(chat_id=message.chat.id, text="Kullanıcı sistemde bulunamadı.")
+        return
+
+    name = names[idx]
+    penalties = get_penalties()
+    mevcut_ceza = penalties.get(name, 0)
+
+    if miktar > mevcut_ceza:
+        bot.send_message(chat_id=message.chat.id, text=f"⚠️ Ödeme tutarı mevcut cezadan büyük. Toplam cezanız: {mevcut_ceza} TL")
+        return
+
+    # Yeni ceza miktarını hesapla ve yaz
+    yeni_ceza = mevcut_ceza - miktar
+    penalties[name] = yeni_ceza
+    save_penalties(penalties)
+
+    teyit_kullanici_id = 993517466
+    mention = f'<a href="tg://user?id={user.id}">{name}</a>'
+    teyit_mesaj = (
+        f"{mention} adlı kullanıcı <b>{miktar:.2f} TL</b> ödeme yaptığını bildirdi.\n\n"
+        f"Kalan cezası: <b>{yeni_ceza:.2f} TL</b>\n"
+        f"✅ Ödeme teyidini lütfen onaylayın."
+    )
+
+    bot.send_message(chat_id=teyit_kullanici_id, text=teyit_mesaj, parse_mode="HTML")
+    bot.send_message(chat_id=message.chat.id, text="💸 Ödeme bildiriminiz alındı. Teyit bekleniyor.")
 
 @bot.message_handler(commands=['yardim', 'komutlar', 'help'])
 def komutlar_listesi(message):
