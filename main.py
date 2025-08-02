@@ -241,18 +241,20 @@ def send_motivation(chat_id):
         msg += f"\n\nHenüz okumayanlar: {unread}"
     bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
 
+# Arşivleme 
+def archive_daily_reading():
+    sheet_okuma = gsheet.open_by_key(SHEET_ID).worksheet("Okuma Takip")
+    sheet_arsiv = gsheet.open_by_key(SHEET_ID).worksheet("OkumaArsiv")
 
+    data = sheet_okuma.get_all_values()
+    sheet_arsiv.clear()  # Arşivi temizle
+    sheet_arsiv.update('A1', data)  # A1 hücresinden itibaren kopyala
 
 # KOMUTLAR
 @bot.message_handler(commands=['hatirlat'])
 def manuel_hatirlat(message):
     send_motivation(message.chat.id)
 
-@bot.message_handler(commands=['saat'])
-def saat_kontrol(message):
-    tz_tr = timezone(timedelta(hours=3))
-    now = datetime.now(tz_tr)
-    bot.send_message(chat_id=message.chat.id, text=f"Türkiye saatiyle şu an: {now.strftime('%Y-%m-%d %H:%M:%S')}")
 
 @bot.message_handler(commands=['gonder'])
 def manual_send(message):
@@ -310,11 +312,12 @@ def rapor_komutu(message):
     except IndexError:
         pass
 
-    # Kişiyi bul
-    names = sheet_okuma.col_values(1)[1:]
-    user_ids = sheet_okuma.col_values(2)[1:]
-    usernames = sheet_okuma.col_values(3)[1:]
-    date_cols = sheet_okuma.row_values(1)[3:]
+    # 🔁 Arşiv dosyasını kullan!
+    sheet_arsiv = gsheet.open_by_key(SHEET_ID).worksheet("OkumaArsiv")
+    names = sheet_arsiv.col_values(1)[1:]
+    user_ids = sheet_arsiv.col_values(2)[1:]
+    usernames = sheet_arsiv.col_values(3)[1:]
+    date_cols = sheet_arsiv.row_values(1)[3:]
 
     idx = None
     for i, (name, uid, uname) in enumerate(zip(names, user_ids, usernames)):
@@ -326,7 +329,6 @@ def rapor_komutu(message):
                 idx = i
                 break
         else:
-            # Boşsa kendi id ya da username
             if str(user.id) == str(uid) or (user.username and ("@" + user.username) == uname):
                 idx = i
                 break
@@ -334,8 +336,8 @@ def rapor_komutu(message):
         bot.send_message(message.chat.id, "Kullanıcı bulunamadı.")
         return
 
-    # Verileri çek
-    okuma_row = sheet_okuma.row_values(idx + 2)[3:]
+    # 🔁 Arşiv satırını al
+    okuma_row = sheet_arsiv.row_values(idx + 2)[3:]
     try:
         first_read_idx = okuma_row.index("✅")
     except ValueError:
@@ -347,11 +349,11 @@ def rapor_komutu(message):
     unread_days = total_days - read_days
     success_rate = (read_days / total_days * 100) if total_days else 0
 
-    # Ceza hesapla
+    # ✅ Ceza hesapla — hâlâ Okuma Takip'ten bakıyoruz
     penalties = get_penalties()
     total_penalty = penalties.get(names[idx], 0)
 
-    # Son gün okudu mu?
+    # Son gün durumu
     last_date = date_cols[-1] if date_cols else "?"
     last_read = okuma_row[-1] if okuma_row else ""
     last_status = "✅" if last_read == "✅" else "❌"
@@ -366,6 +368,7 @@ def rapor_komutu(message):
         f"• Son gün ({last_date}) durumu: {last_status}\n"
     )
     bot.send_message(message.chat.id, rapor, parse_mode="HTML")
+
 
 @bot.message_handler(commands=['cezalar'])
 def ceza_rapor(message):
