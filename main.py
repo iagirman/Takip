@@ -433,8 +433,10 @@ def eksik_komutu(message):
     for col_idx, cell in enumerate(okuma_row[first_read_idx:], start=first_read_idx):
         if cell != "✅":
             tarih = date_cols[col_idx]
-            sayfa1 = current_page - 2 * (toplam_gun - col_idx)
+            gecikme = toplam_gun - col_idx - 1
+            sayfa1 = current_page - 2 * gecikme
             sayfa2 = sayfa1 + 1
+
             eksikler.append(f"{tarih}: {sayfa1 + 1}–{sayfa2 + 1}")
 
     if eksikler:
